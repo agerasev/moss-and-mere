@@ -12,6 +12,13 @@ pub const BRIARGLEN: Vec2 = Vec2::new(680.0, 1000.0);
 pub const WILLOWFORD: Vec2 = Vec2::new(1850.0, 900.0);
 pub const START: Vec2 = Vec2::new(680.0, 1016.0);
 pub const BRIDGE_Y: f32 = 960.0;
+pub const BLACKSMITH: usize = 1;
+pub const DUNGEON: &str = "Emberwatch Ruins";
+pub const DUNGEON_ENTRY: Vec2 = Vec2::new(2040.0, 616.0);
+pub const GUARDIAN_HOME: Vec2 = Vec2::new(2008.0, 344.0);
+pub const SECRET_SWITCH: Vec2 = Vec2::new(2094.0, 352.0);
+pub const SECRET_CHEST: Vec2 = Vec2::new(2184.0, 344.0);
+pub const RELIC_POS: Vec2 = Vec2::new(2008.0, 288.0);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tile {
@@ -22,6 +29,7 @@ pub enum Tile {
     Sand,
     Bridge,
     Farmland,
+    Stone,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,6 +42,10 @@ pub enum PropKind {
     Rock,
     Flowers,
     Fence,
+    Wall,
+    Torch,
+    Anvil,
+    Gate,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -215,6 +227,7 @@ impl World {
         world.build_village(BRIARGLEN, 0);
         world.build_village(WILLOWFORD, 1);
         world.plant_landscape();
+        world.build_dungeon();
         world.populate();
         world
     }
@@ -414,10 +427,88 @@ impl World {
         }
     }
 
+    /// An open-roof ruin whose rooms use the same collision rules as the vale.
+    /// Floor coordinates describe tiles; wall sprites stand on the tile's
+    /// southern edge, so their visible base and collision footprint agree.
+    fn build_dungeon(&mut self) {
+        // The clearing leaves a breathing space between the forest canopy and
+        // the masonry. Its southern arch opens directly onto Whisperwood.
+        self.props.retain(|prop| {
+            !(prop.pos.x >= 1872.0
+                && prop.pos.x <= 2288.0
+                && prop.pos.y >= 208.0
+                && prop.pos.y <= 664.0)
+        });
+        let mut floor = std::collections::BTreeSet::new();
+        for (x0, x1, y0, y1) in [
+            (120, 130, 16, 25), // Guardian's forge hall.
+            (123, 130, 26, 34), // Southern foyer.
+            (133, 139, 18, 24), // Hidden east treasury.
+            (131, 132, 21, 22), // Sealed treasury passage.
+            (126, 128, 35, 37), // Open southern arch.
+        ] {
+            for y in y0..=y1 {
+                for x in x0..=x1 {
+                    floor.insert((x, y));
+                    self.tiles[y * WIDTH + x] = Tile::Stone;
+                }
+            }
+        }
+        let mut walls = std::collections::BTreeSet::new();
+        for &(x, y) in &floor {
+            for nx in x - 1..=x + 1 {
+                for ny in y - 1..=y + 1 {
+                    if !floor.contains(&(nx, ny)) && !(ny == 38 && (126..=128).contains(&nx)) {
+                        walls.insert((nx, ny));
+                    }
+                }
+            }
+        }
+        for (x, y) in walls {
+            self.tiles[y * WIDTH + x] = Tile::Stone;
+            self.props.push(Prop {
+                kind: PropKind::Wall,
+                pos: Vec2::new((x as f32 + 0.5) * TILE, (y as f32 + 1.0) * TILE),
+                variant: ((x * 13 + y * 7) % 3) as u8,
+            });
+        }
+        // Two stacked pieces fully seal the 32-pixel-wide passage. Opening the
+        // secret removes the physical gate, rather than allowing wall clipping.
+        for y in [21, 22] {
+            self.props.push(Prop {
+                kind: PropKind::Gate,
+                pos: Vec2::new(2104.0, (y as f32 + 1.0) * TILE),
+                variant: if y == 21 { 0 } else { 1 },
+            });
+        }
+        for pos in [
+            Vec2::new(1936.0, 300.0),
+            Vec2::new(2080.0, 300.0),
+            Vec2::new(1992.0, 544.0),
+            Vec2::new(2080.0, 544.0),
+            Vec2::new(2224.0, 304.0),
+        ] {
+            self.props.push(Prop {
+                kind: PropKind::Torch,
+                pos,
+                variant: 0,
+            });
+        }
+        self.props.push(Prop {
+            kind: PropKind::Anvil,
+            pos: Vec2::new(581.0, 948.0),
+            variant: 0,
+        });
+    }
+
+    pub fn open_secret(&mut self) {
+        self.props.retain(|prop| prop.kind != PropKind::Gate);
+    }
+
     fn populate(&mut self) {
         let villagers = [
             ("Mira", "Briarglen herbalist", Vec2::new(695.0, 1000.0), 0),
-            ("Alden", "Briarglen woodcutter", Vec2::new(553.0, 962.0), 1),
+            ("Alden", "Briarglen blacksmith", Vec2::new(553.0, 962.0), 1),
             ("Pip", "Briarglen gardener", Vec2::new(568.0, 1150.0), 2),
             ("Bess", "Briarglen baker", Vec2::new(803.0, 936.0), 3),
             (
@@ -518,7 +609,19 @@ impl World {
                 prop.pos + Vec2::new(-16.0, -5.0),
                 prop.pos + Vec2::new(16.0, 0.0),
             ),
-            PropKind::Flowers => false,
+            PropKind::Wall | PropKind::Gate => circle_rect(
+                pos,
+                radius,
+                prop.pos + Vec2::new(-8.0, -16.0),
+                prop.pos + Vec2::new(8.0, 0.0),
+            ),
+            PropKind::Anvil => circle_rect(
+                pos,
+                radius,
+                prop.pos + Vec2::new(-10.0, -10.0),
+                prop.pos + Vec2::new(10.0, 0.0),
+            ),
+            PropKind::Flowers | PropKind::Torch => false,
         })
     }
 
@@ -579,7 +682,9 @@ impl World {
     }
 
     pub fn region(&self, pos: Vec2) -> &'static str {
-        if pos.distance(BRIARGLEN) < 230.0 {
+        if (1888.0..=2272.0).contains(&pos.x) && (224.0..=640.0).contains(&pos.y) {
+            DUNGEON
+        } else if pos.distance(BRIARGLEN) < 230.0 {
             "Briarglen"
         } else if pos.distance(WILLOWFORD) < 230.0 {
             "Willowford"
@@ -636,8 +741,8 @@ impl World {
                 "The remedies are ready, thanks to you. Wander where you will, friend. The Mere has a way of bringing good people together.",
             ),
             ("Alden", _) => (
-                "Whisperwood",
-                "The northern forest is called Whisperwood. Leave the old trees standing and the paths will be kind to you. Watch your step around their roots.",
+                "A fire for the vale",
+                "A good blade begins with a patient hand. Bring me materials from the wilds, traveler, and we will see what my forge can do.",
             ),
             ("Pip", _) => (
                 "Small things growing",
@@ -838,5 +943,60 @@ mod tests {
         assert_eq!(quest, Quest::Delivered);
         world.interact(0, &mut quest);
         assert_eq!(quest, Quest::Delivered);
+    }
+
+    fn has_route(world: &World, from: Vec2, to: Vec2) -> bool {
+        let start = ((from.x / TILE) as usize, (from.y / TILE) as usize);
+        let destination = ((to.x / TILE) as usize, (to.y / TILE) as usize);
+        let mut queue = VecDeque::from([start]);
+        let mut seen = vec![false; WIDTH * HEIGHT];
+        seen[start.1 * WIDTH + start.0] = true;
+        while let Some((x, y)) = queue.pop_front() {
+            if (x, y) == destination {
+                return true;
+            }
+            for (nx, ny) in [
+                (x.wrapping_sub(1), y),
+                (x + 1, y),
+                (x, y.wrapping_sub(1)),
+                (x, y + 1),
+            ] {
+                if nx >= WIDTH || ny >= HEIGHT || seen[ny * WIDTH + nx] {
+                    continue;
+                }
+                seen[ny * WIDTH + nx] = true;
+                let pos = Vec2::new((nx as f32 + 0.5) * TILE, (ny as f32 + 0.5) * TILE);
+                if world.can_walk(pos, PLAYER_RADIUS) {
+                    queue.push_back((nx, ny));
+                }
+            }
+        }
+        false
+    }
+
+    #[test]
+    fn ruins_have_walkable_entrance_arena_and_relic_route() {
+        let world = World::new();
+        assert_eq!(world.region(GUARDIAN_HOME), DUNGEON);
+        assert!(world.can_walk(GUARDIAN_HOME, 9.0));
+        assert!(world.can_walk(DUNGEON_ENTRY, PLAYER_RADIUS));
+        assert!(world.can_walk(RELIC_POS, PLAYER_RADIUS));
+        assert!(has_route(&world, WILLOWFORD, DUNGEON_ENTRY));
+        assert!(has_route(&world, DUNGEON_ENTRY, GUARDIAN_HOME));
+        assert!(has_route(&world, GUARDIAN_HOME, RELIC_POS));
+        assert!(world.can_walk(SECRET_SWITCH + Vec2::new(-14.0, 0.0), PLAYER_RADIUS));
+    }
+
+    #[test]
+    fn treasury_is_sealed_until_engraved_gate_opens() {
+        let mut world = World::new();
+        assert!(!has_route(&world, DUNGEON_ENTRY, SECRET_CHEST));
+        assert!(world.props.iter().any(|prop| prop.kind == PropKind::Gate));
+        world.open_secret();
+        assert!(!world.props.iter().any(|prop| prop.kind == PropKind::Gate));
+        assert!(has_route(&world, DUNGEON_ENTRY, SECRET_CHEST));
+        let props = world.props.clone();
+        world.open_secret();
+        assert_eq!(world.props, props);
     }
 }

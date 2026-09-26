@@ -103,7 +103,9 @@ fn random(seed: u32) -> u32 {
 /// Wilderness creatures use the same bottom-centre ground anchor as people.
 /// Kinds are moss slime (0) and briar wolf (1); facing and steps match `person`.
 pub fn monster(kind: u8, facing: u8, step: u8) -> PixelArt {
-    if kind == 0 {
+    if kind == 2 {
+        guardian(facing % 4, step % 3)
+    } else if kind == 0 {
         moss_slime(facing % 4, step % 3)
     } else {
         briar_wolf(facing % 4, step % 3)
@@ -426,6 +428,12 @@ pub fn terrain(kind: u8, variant: u8) -> PixelArt {
             rgb(109, 85, 58),
             rgb(179, 142, 94),
         ],
+        7 => [
+            rgb(99, 110, 108),
+            rgb(119, 128, 117),
+            rgb(80, 94, 92),
+            rgb(143, 146, 127),
+        ],
         6 => [
             rgb(112, 91, 58),
             rgb(129, 104, 65),
@@ -453,6 +461,17 @@ pub fn terrain(kind: u8, variant: u8) -> PixelArt {
         );
     }
     match kind {
+        7 => {
+            a.rect(0, 0, 16, 1, colors[2]);
+            a.rect(0, 8, 16, 1, colors[2]);
+            a.rect(variant as i32 % 2 * 8, 0, 1, 8, colors[2]);
+            a.rect(8 - variant as i32 % 2 * 8, 8, 1, 8, colors[2]);
+            a.line(1, 1, 14, 1, colors[1]);
+            if variant == 2 {
+                a.line(4, 8, 7, 12, colors[2]);
+                a.line(7, 12, 6, 15, colors[2]);
+            }
+        }
         0 | 1 => {
             for i in 0..3u32 {
                 let n = random(variant as u32 * 41 + i * 911);
@@ -694,6 +713,9 @@ fn house(variant: u8) -> PixelArt {
 
 /// World props. Every prop uses a bottom-centre placement anchor.
 pub fn prop(kind: u8, variant: u8) -> PixelArt {
+    if kind >= 8 {
+        return ruin_prop(kind, variant);
+    }
     match kind {
         0 => broadleaf(variant),
         1 => pine(variant),
@@ -979,4 +1001,169 @@ pub fn person(variant: u8, facing: u8, step: u8) -> PixelArt {
         a.rect(8, 14 + bob, 5, 6, rgb(207, 192, 150));
     }
     a
+}
+
+fn guardian(facing: u8, step: u8) -> PixelArt {
+    let mut a = PixelArt::new(48, 52, CLEAR);
+    let dark = rgb(49, 62, 61);
+    let stone = rgb(102, 117, 106);
+    let light = rgb(156, 159, 126);
+    let moss = rgb(79, 120, 73);
+    let ember = rgb(244, 153, 63);
+    let bob = i32::from(step == 1);
+    let stride = if step == 1 {
+        2
+    } else if step == 2 {
+        -2
+    } else {
+        0
+    };
+    a.ellipse(24, 48, 21, 3, SHADOW);
+    for (x, d) in [(12, stride), (28, -stride)] {
+        a.rect(x + d, 34, 10, 15, dark);
+        a.rect(x + d + 1, 35, 7, 12, stone);
+        a.rect(x + d, 46, 12, 3, light);
+        a.line(x + d + 4, 36, x + d + 3, 43, dark);
+    }
+    a.poly(&[(9, 18 + bob), (39, 18 + bob), (36, 38), (12, 38)], dark);
+    a.poly(&[(11, 20 + bob), (36, 20 + bob), (33, 36), (14, 36)], stone);
+    a.rect(13, 20 + bob, 4, 14, light);
+    a.line(19, 21 + bob, 25, 26 + bob, dark);
+    a.line(25, 26 + bob, 22, 35, dark);
+    for (x, dy) in [(3, stride), (37, -stride)] {
+        a.rect(x, 20 + dy, 9, 19, dark);
+        a.rect(x + 1, 21 + dy, 6, 13, stone);
+        a.rect(x + 2, 22 + dy, 3, 8, light);
+        a.rect(x - 1, 34 + dy, 11, 9, dark);
+        a.rect(x, 35 + dy, 8, 6, stone);
+        a.rect(x, 19 + dy, 8, 3, moss);
+    }
+    a.rect(14, 5 + bob, 21, 17, dark);
+    a.rect(16, 6 + bob, 17, 13, stone);
+    a.rect(16, 6 + bob, 5, 9, light);
+    a.rect(12, 4 + bob, 23, 4, moss);
+    a.rect(19, 1 + bob, 3, 5, moss);
+    a.rect(30, 2 + bob, 2, 4, moss);
+    if facing != 3 {
+        let dx = if facing == 1 {
+            -2
+        } else if facing == 2 {
+            2
+        } else {
+            0
+        };
+        a.rect(18 + dx, 11 + bob, 5, 3, dark);
+        a.rect(26 + dx, 11 + bob, 5, 3, dark);
+        a.rect(19 + dx, 11 + bob, 3, 2, ember);
+        a.rect(27 + dx, 11 + bob, 3, 2, ember);
+        a.poly(
+            &[
+                (24, 23 + bob),
+                (29, 28 + bob),
+                (24, 33 + bob),
+                (19, 28 + bob),
+            ],
+            dark,
+        );
+        a.poly(
+            &[
+                (24, 25 + bob),
+                (27, 28 + bob),
+                (24, 31 + bob),
+                (21, 28 + bob),
+            ],
+            ember,
+        );
+        a.dot(24, 27 + bob, rgb(255, 229, 154));
+    }
+    a.rect(31, 28, 4, 4, moss);
+    a.rect(28, 34, 6, 2, moss);
+    a
+}
+
+fn ruin_prop(kind: u8, variant: u8) -> PixelArt {
+    let stone = rgb(94, 107, 102);
+    let light = rgb(143, 151, 130);
+    let dark = rgb(55, 70, 69);
+    let gold = rgb(209, 167, 79);
+    match kind {
+        8 | 11 => {
+            let mut a = PixelArt::new(16, 32, CLEAR);
+            a.rect(0, 1, 16, 31, dark);
+            a.rect(0, 1, 16, 7, light);
+            a.rect(0, 8, 16, 24, stone);
+            a.line(0, 1, 15, 1, rgb(177, 174, 145));
+            for y in [8, 16, 24, 31] {
+                a.line(0, y, 15, y, dark);
+            }
+            for (x, y) in [(7, 9), (2, 17), (11, 25)] {
+                a.rect(x, y, 1, 7, dark);
+            }
+            if kind == 11 {
+                a.poly(&[(8, 9), (12, 15), (8, 22), (4, 16)], rgb(123, 164, 110));
+                a.line(8, 12, 8, 25, gold);
+            } else if variant.is_multiple_of(2) {
+                a.rect(1, 2, 6, 2, rgb(85, 119, 73));
+                a.rect(2, 4, 3, 7, rgb(66, 99, 66));
+            }
+            a
+        }
+        9 => {
+            let mut a = PixelArt::new(16, 28, CLEAR);
+            a.rect(7, 13, 3, 14, BARK);
+            a.rect(6, 12, 5, 5, dark);
+            a.poly(
+                &[(8, 1), (13, 10), (10, 15), (5, 14), (3, 9), (6, 6)],
+                rgb(226, 120, 54),
+            );
+            a.poly(&[(8, 5), (10, 11), (8, 14), (5, 11)], rgb(255, 200, 96));
+            a.rect(7, 10, 2, 4, rgb(255, 235, 166));
+            a
+        }
+        10 => {
+            let mut a = PixelArt::new(24, 20, CLEAR);
+            a.ellipse(12, 18, 11, 2, SHADOW);
+            a.rect(4, 14, 16, 4, BARK);
+            a.rect(8, 6, 8, 9, dark);
+            a.poly(&[(1, 3), (23, 3), (19, 8), (5, 8)], stone);
+            a.rect(4, 2, 16, 2, light);
+            a.rect(6, 13, 13, 2, stone);
+            a.rect(16, 0, 3, 3, gold);
+            a
+        }
+        12 => {
+            let mut a = PixelArt::new(24, 22, CLEAR);
+            a.ellipse(12, 20, 11, 2, SHADOW);
+            a.rect(2, 7, 20, 13, dark);
+            a.rect(3, 8, 18, 10, BARK);
+            a.rect(3, 8, 18, 2, BARK_LIGHT);
+            a.rect(5, 8, 2, 10, gold);
+            a.rect(17, 8, 2, 10, gold);
+            if variant == 0 {
+                a.poly(&[(2, 7), (5, 3), (19, 3), (22, 7)], BARK_LIGHT);
+                a.rect(2, 9, 20, 2, dark);
+                a.rect(10, 9, 4, 5, gold);
+                a.dot(12, 11, dark);
+            } else {
+                a.rect(3, 2, 18, 5, BARK_LIGHT);
+                a.rect(4, 7, 16, 5, INK);
+            }
+            a
+        }
+        _ => {
+            let mut a = PixelArt::new(24, 36, CLEAR);
+            a.ellipse(12, 33, 11, 2, SHADOW);
+            a.rect(3, 29, 18, 5, dark);
+            a.rect(5, 23, 14, 8, stone);
+            a.ellipse(12, 23, 10, 3, light);
+            a.ellipse(12, 22, 7, 2, dark);
+            a.line(10, 27, 14, 27, gold);
+            if variant == 0 {
+                a.poly(&[(12, 2), (18, 11), (12, 20), (6, 11)], rgb(166, 73, 41));
+                a.poly(&[(12, 3), (15, 10), (12, 17), (9, 10)], rgb(244, 164, 61));
+                a.line(12, 6, 12, 12, rgb(255, 230, 150));
+            }
+            a
+        }
+    }
 }

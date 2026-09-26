@@ -2,6 +2,7 @@ use crate::{
     art::{self, PixelArt},
     combat::{self, Kind, MAX_HEALTH, RESIDENT_HEALTH, RESPAWN_TIME, SWING_DURATION},
     game::{Game, Panel},
+    progress::ForgeQuest,
     world::{BRIARGLEN, HEIGHT, PropKind, Quest, TILE, Tile, WIDTH, WILLOWFORD},
 };
 use std::collections::BTreeMap;
@@ -81,11 +82,11 @@ impl Renderer {
                 0,
             )?),
         ];
-        let terrain = (0..7)
+        let terrain = (0..8)
             .flat_map(|k| (0..4).map(move |v| (k, v)))
             .map(|(k, v)| Sprite::new(&library, art::terrain(k, v)))
             .collect();
-        let props = (0..8)
+        let props = (0..14)
             .flat_map(|k| (0..4).map(move |v| (k, v)))
             .map(|(k, v)| Sprite::new(&library, art::prop(k, v)))
             .collect();
@@ -93,7 +94,7 @@ impl Renderer {
             .flat_map(|v| (0..4).flat_map(move |f| (0..3).map(move |s| (v, f, s))))
             .map(|(v, f, s)| Sprite::new(&library, art::person(v, f, s)))
             .collect();
-        let monsters = (0..2)
+        let monsters = (0..3)
             .flat_map(|k| (0..4).flat_map(move |f| (0..3).map(move |step| (k, f, step))))
             .map(|(k, f, step)| Sprite::new(&library, art::monster(k, f, step)))
             .collect();
@@ -322,6 +323,32 @@ impl Renderer {
                 objects.push((monster.pos.y, 3, i));
             }
         }
+        for (i, pos) in [crate::world::SECRET_CHEST, crate::world::RELIC_POS]
+            .into_iter()
+            .enumerate()
+        {
+            if on_screen(pos) {
+                objects.push((pos.y, 4, i));
+            }
+        }
+        for drop in &g.combat.loot {
+            if on_screen(drop.pos) {
+                let p = screen(drop.pos);
+                scene_ring(&self.library, s, p, Vec2::new(7., 3.) * zoom, color(GOLD));
+                self.rect(
+                    s,
+                    p - Vec2::new(2., 6.) * zoom,
+                    Vec2::new(5., 5.) * zoom,
+                    0xdeb55e,
+                );
+                self.rect(
+                    s,
+                    p - Vec2::new(1., 6.) * zoom,
+                    Vec2::new(2., 2.) * zoom,
+                    0xffe9a3,
+                );
+            }
+        }
         objects.push((g.player.pos.y, 2, 0));
         objects.sort_by(|a, b| a.0.total_cmp(&b.0));
         for (_, kind, i) in objects {
@@ -331,11 +358,16 @@ impl Renderer {
                     let sprite = &self.props[prop_index(prop.kind) * 4 + prop.variant as usize % 4];
                     let delta = prop.pos - g.player.pos;
                     // Fade foreground canopies and roofs so the traveller stays visible.
-                    let occludes =
-                        matches!(prop.kind, PropKind::Tree | PropKind::Pine | PropKind::House)
-                            && delta.y > 0.
-                            && delta.y < sprite.size.y + 8.
-                            && delta.x.abs() < sprite.size.x * 0.5 + 6.;
+                    let occludes = matches!(
+                        prop.kind,
+                        PropKind::Tree
+                            | PropKind::Pine
+                            | PropKind::House
+                            | PropKind::Wall
+                            | PropKind::Gate
+                    ) && delta.y > 0.
+                        && delta.y < sprite.size.y + 8.
+                        && delta.x.abs() < sprite.size.x * 0.5 + 6.;
                     let p = screen(prop.pos) - Vec2::new(sprite.size.x * 0.5, sprite.size.y) * zoom;
                     s.add(
                         &self
@@ -394,6 +426,7 @@ impl Renderer {
                     let kind = match monster.kind {
                         Kind::Slime => 0,
                         Kind::Wolf => 1,
+                        Kind::Guardian => 2,
                     };
                     let sprite = &self.monsters[kind * 12 + monster.facing as usize * 3 + step];
                     let pos =
@@ -421,13 +454,51 @@ impl Renderer {
                             &self.library,
                             s,
                             screen(monster.pos),
-                            Vec2::new(19., 7.) * zoom,
+                            Vec2::new(
+                                if monster.kind == Kind::Guardian {
+                                    32.
+                                } else {
+                                    19.
+                                },
+                                if monster.kind == Kind::Guardian {
+                                    11.
+                                } else {
+                                    7.
+                                },
+                            ) * zoom,
                             color(0xef8760),
                         );
                     }
                 }
+                4 => {
+                    let (pos, kind, variant) = if i == 0 {
+                        (
+                            crate::world::SECRET_CHEST,
+                            12,
+                            usize::from(g.progress.chest_taken),
+                        )
+                    } else {
+                        (
+                            crate::world::RELIC_POS,
+                            13,
+                            usize::from(g.progress.relic_taken),
+                        )
+                    };
+                    self.sprite(s, &self.props[kind * 4 + variant], screen(pos), zoom, true);
+                }
                 _ => {
                     let p = screen(g.player.pos);
+                    if g.combat.dodge > 0. {
+                        for i in 1..4 {
+                            scene_ring(
+                                &self.library,
+                                s,
+                                p - g.combat.dodge_direction() * (i as f32 * 7. * zoom),
+                                Vec2::new(8., 3.) * zoom,
+                                Vec4::new(0.8, 0.9, 0.8, 0.3),
+                            );
+                        }
+                    }
                     scene_ring(
                         &self.library,
                         s,
@@ -452,13 +523,19 @@ impl Renderer {
                 }
             }
         }
+        self.atmosphere(s, g, origin);
         self.combat_effects(s, g, origin);
         for (i, npc) in g.world.npcs.iter().enumerate() {
             if g.combat.resident_hostile(i, &g.world) || g.combat.residents[i].down > 0. {
                 continue;
             }
             let quest_npc = (npc.name == "Mira" && g.quest == Quest::NotStarted)
-                || (npc.name == "Rowan" && g.quest == Quest::Carrying);
+                || (npc.name == "Rowan" && g.quest == Quest::Carrying)
+                || (npc.name == "Alden"
+                    && matches!(
+                        g.progress.forge,
+                        ForgeQuest::NotStarted | ForgeQuest::Recovered
+                    ));
             if quest_npc && on_screen(npc.pos) {
                 let p = screen(npc.pos) - Vec2::new(0., 34. * zoom + (g.elapsed * 2.).sin() * 3.);
                 self.circle(s, p, 11., INK);
@@ -494,11 +571,61 @@ impl Renderer {
             );
             self.center(s, &text, p.x, p.y, 13., PAPER);
         }
+        if g.panel == Panel::None
+            && g.dialogue.is_none()
+            && let Some(text) = g.interaction_prompt()
+        {
+            let p = screen(g.player.pos) + Vec2::new(0., 65.);
+            self.panel(s, p - Vec2::new(155., 25.), Vec2::new(310., 38.), INK);
+            self.center(s, text, p.x, p.y, 13., GOLD);
+        }
         if g.toast_time > 0. && g.dialogue.is_none() && g.panel == Panel::None {
             let w = (g.toast.len() as f32 * 7.4 + 56.).min(size.x - 80.);
             let p = Vec2::new((size.x - w) / 2., 92.);
             self.panel(s, p, Vec2::new(w, 42.), INK);
             self.center(s, &g.toast, size.x / 2., 119., 14., PAPER);
+        }
+    }
+    fn atmosphere(&self, s: &mut Scene, g: &Game, origin: Vec2) {
+        let rain = g.rain();
+        let night = g.night();
+        self.rgba(
+            s,
+            Vec2::new(0., 72.),
+            DESIGN - Vec2::new(0., 116.),
+            Vec4::new(0.08, 0.14, 0.22, night * 0.42 + rain * 0.13),
+        );
+        for prop in &g.world.props {
+            if prop.kind == PropKind::Torch {
+                let p = (prop.pos - Vec2::new(0., 18.)) * g.zoom + origin;
+                if p.x > -60. && p.x < DESIGN.x + 60. && p.y > 20. && p.y < DESIGN.y {
+                    for i in 0..3 {
+                        s.add(
+                            &self
+                                .library
+                                .shapes()
+                                .unit_circle()
+                                .fill_color(Vec4::new(1., 0.64, 0.20, 0.035))
+                                .scale((24. - i as f32 * 5. + (g.elapsed * 6.).sin()) * g.zoom)
+                                .move_to(p),
+                        );
+                    }
+                }
+            }
+        }
+        for i in 0..(rain * 100.) as u32 {
+            let x =
+                (i as f32 * 137.7 - g.elapsed * 95. + origin.x * 0.15).rem_euclid(DESIGN.x + 20.);
+            let y = (i as f32 * 93.3 + g.elapsed * 380. + origin.y * 0.15)
+                .rem_euclid(DESIGN.y - 116.)
+                + 72.;
+            s.add(
+                &self
+                    .library
+                    .shapes()
+                    .line(Vec2::new(x, y), Vec2::new(x - 5., y + 12.), 1.)
+                    .fill_color(Vec4::new(0.77, 0.85, 0.85, 0.32)),
+            );
         }
     }
     fn combat_effects(&mut self, s: &mut Scene, g: &Game, origin: Vec2) {
@@ -508,7 +635,15 @@ impl Renderer {
             if monster.health <= 0. || monster.pos.distance(g.player.pos) > 220. {
                 continue;
             }
-            let p = screen(monster.pos) - Vec2::new(26., 35. * zoom);
+            let p = screen(monster.pos)
+                - Vec2::new(
+                    26.,
+                    if monster.kind == Kind::Guardian {
+                        56. * zoom
+                    } else {
+                        35. * zoom
+                    },
+                );
             self.center(s, monster.kind.name(), p.x + 26., p.y - 7., 10., PAPER);
             self.rect(s, p, Vec2::new(52., 5.), INK);
             self.rect(
@@ -649,18 +784,49 @@ impl Renderer {
                 0x9ebd78
             },
         );
+        self.rect(s, Vec2::new(605., 46.), Vec2::new(177., 5.), 0x3b4b40);
+        self.rect(
+            s,
+            Vec2::new(605., 46.),
+            Vec2::new(
+                177. * (g.combat.stamina / crate::combat::MAX_STAMINA).clamp(0., 1.),
+                5.,
+            ),
+            0xc4b270,
+        );
+        self.text(s, "STAMINA", 605., 64., 8., MUTED);
+        self.text(
+            s,
+            &format!("{} crowns", g.progress.coins),
+            818.,
+            28.,
+            12.,
+            GOLD,
+        );
+        self.text(
+            s,
+            &format!("{} iron shards", g.progress.materials),
+            818.,
+            45.,
+            10.,
+            MUTED,
+        );
         self.text(
             s,
             if hostile {
                 "VILLAGE HOSTILE"
             } else if haven {
                 "Village sanctuary"
+            } else if g.rain() > 0.5 {
+                "Rain over the March"
+            } else if g.night() > 0.3 {
+                "Evening in the March"
             } else {
                 "Wilderness"
             },
-            605.,
-            57.,
-            10.,
+            818.,
+            61.,
+            9.,
             if hostile { 0xed9470 } else { MUTED },
         );
         for (label, key, x, active) in [
@@ -703,20 +869,28 @@ impl Renderer {
         self.text(s, "zoom", 372., size.y - 17., 11., MUTED);
         self.text(s, "SPACE / CLICK", 435., size.y - 17., 10., GOLD);
         self.text(s, "strike", 530., size.y - 17., 11., MUTED);
+        self.text(s, "Q / RIGHT CLICK", 600., size.y - 17., 10., GOLD);
+        self.text(s, "dodge", 708., size.y - 17., 11., MUTED);
+        self.text(s, "R", 775., size.y - 17., 10., GOLD);
+        self.text(s, "village", 794., size.y - 17., 11., MUTED);
         self.label(
             s,
-            "Tread gently. Keep your blade close.",
+            if g.muted {
+                "U  Sound off"
+            } else {
+                "U  Sound on"
+            },
             Vec2::new(size.x - 24., size.y - 17.),
-            12.,
+            11.,
             MUTED,
-            true,
+            false,
             TextAlign::Right,
         );
         if g.panel == Panel::None && g.dialogue.is_none() {
             let p = Vec2::new(24., size.y - 146.);
-            self.panel(s, p, Vec2::new(335., 78.), INK);
+            self.panel(s, p, Vec2::new(365., 78.), INK);
             self.text(s, "YOUR JOURNEY", p.x + 17., p.y + 24., 10., GOLD);
-            self.paragraph(s, g.objective(), p + Vec2::new(17., 47.), 300., 13., PAPER);
+            self.paragraph(s, g.objective(), p + Vec2::new(17., 47.), 330., 13., PAPER);
             self.minimap(s, g, Vec2::new(size.x - 178., size.y - 203.));
         }
     }
@@ -785,6 +959,8 @@ impl Renderer {
             Panel::Journal => "A traveller's journal",
             Panel::Help => "The road is yours",
             Panel::Pause => "A moment of quiet",
+            Panel::Forge => "Alden’s forge",
+            Panel::Village => "The village council",
             Panel::None => "",
         };
         self.title(s, heading, p.x + 32., p.y + 72., 31., INK);
@@ -800,6 +976,8 @@ impl Renderer {
             Panel::Map => self.map(s, g, p, panel_size),
             Panel::Journal => self.journal(s, g, p, panel_size),
             Panel::Help => self.help(s, p, panel_size),
+            Panel::Forge => self.forge(s, g, p),
+            Panel::Village => self.village(s, g, p),
             Panel::Pause => {
                 self.paragraph(s,"Rest a while beneath the boughs. Your journey is saved automatically as you explore.",p+Vec2::new(40.,145.),panel_size.x-80.,19.,INK);
                 self.text(
@@ -842,7 +1020,11 @@ impl Renderer {
                 );
             }
         }
-        for (pos, name) in [(BRIARGLEN, "Briarglen"), (WILLOWFORD, "Willowford")] {
+        for (pos, name) in [
+            (BRIARGLEN, "Briarglen"),
+            (WILLOWFORD, "Willowford"),
+            (crate::world::DUNGEON_ENTRY, "Emberwatch"),
+        ] {
             let pin = o + pos / TILE * scale;
             self.circle(s, pin, 5., INK);
             self.circle(s, pin, 3., PAPER);
@@ -901,130 +1083,271 @@ impl Renderer {
             TextAlign::Right,
         );
     }
-    fn journal(&mut self, s: &mut Scene, g: &Game, p: Vec2, size: Vec2) {
-        let x = p.x + 38.;
-        let y = p.y + 126.;
-        self.text(s, "01   A LITTLE KINDNESS", x, y, 11., 0x7c693e);
+    fn journal(&mut self, s: &mut Scene, g: &Game, p: Vec2, _: Vec2) {
+        let x = p.x + 40.;
+        let y = p.y + 130.;
+        let right = p.x + 520.;
+        self.text(s, "A LITTLE KINDNESS", x, y, 10., 0x7c693e);
         self.title(
             s,
-            match g.quest {
-                Quest::NotStarted => "A hello in Briarglen",
-                Quest::Carrying => "A parcel for Willowford",
-                Quest::Delivered => "Friend of the March",
+            if g.quest == Quest::Delivered {
+                "A promise kept"
+            } else {
+                "A parcel of herbs"
             },
             x,
-            y + 38.,
-            25.,
+            y + 33.,
+            24.,
             INK,
         );
-        let story = match g.quest {
-            Quest::NotStarted => {
-                "Every journey begins with a conversation. Mira, the village herbalist, is tending the green in Briarglen. Perhaps she could use a helping hand."
-            }
-            Quest::Carrying => {
-                "Mira has entrusted you with a parcel of dried herbs. Follow the ochre trail east, cross the wooden bridge over the Mere, and find Rowan in Willowford."
-            }
-            Quest::Delivered => {
-                "Rowan received Mira's herbs with gratitude. A small kindness has connected two villages. There are no urgent errands now; follow the forest paths and see where they lead."
-            }
-        };
-        self.paragraph(s, story, Vec2::new(x, y + 78.), size.x - 90., 16., INK);
+        self.paragraph(s,match g.quest {
+            Quest::NotStarted => "Mira, the herbalist in Briarglen, has an errand for a traveler. Speak with her beside the well.",
+            Quest::Carrying => "Carry Mira's herbs east over the bridge to Rowan in Willowford. Reward: 30 crowns and the villages' gratitude.",
+            Quest::Delivered => "Rowan received the herbs. You earned 30 crowns and the trust of both villages.",
+        },Vec2::new(x,y+67.),410.,14.,INK);
         self.line(
             s,
-            Vec2::new(x, y + 180.),
-            Vec2::new(p.x + size.x - 38., y + 180.),
+            Vec2::new(x, y + 170.),
+            Vec2::new(x + 400., y + 170.),
             1.,
             0xbab895,
         );
-        self.text(s, "PLACES DISCOVERED", x, y + 216., 10., 0x7c693e);
-        self.text(
+        self.text(s, "THE SLEEPING FORGE", x, y + 205., 10., 0x7c693e);
+        self.title(s, "An ember in the woods", x, y + 239., 24., INK);
+        self.paragraph(
             s,
-            if g.visited & 1 != 0 {
-                "✓  Briarglen  ·  A home beneath the oaks"
-            } else {
-                "○  Briarglen"
-            },
-            x,
-            y + 248.,
+            g.progress.forge.objective(),
+            Vec2::new(x, y + 272.),
+            400.,
             15.,
+            INK,
+        );
+        self.paragraph(s,"Enter the ruins northeast of Willowford through the southern arch. Dodge the guardian's strike, then inspect the altar. Look for a leaf carved into the eastern wall.",Vec2::new(x,y+335.),410.,13.,0x647057);
+        self.line(
+            s,
+            Vec2::new(right - 30., y),
+            Vec2::new(right - 30., y + 410.),
+            1.,
+            0xbab895,
+        );
+        self.text(s, "SATCHEL & EQUIPMENT", right, y, 10., 0x7c693e);
+        self.title(
+            s,
+            &format!("{} crowns", g.progress.coins),
+            right,
+            y + 35.,
+            25.,
             INK,
         );
         self.text(
             s,
-            if g.visited & 2 != 0 {
-                "✓  Willowford  ·  Gardens beside the Mere"
-            } else {
-                "○  Willowford  ·  Follow the road east"
-            },
-            x,
-            y + 279.,
+            &format!("{} iron shards", g.progress.materials),
+            right,
+            y + 64.,
             15.,
             INK,
         );
-        self.text(s, "SATCHEL", x, y + 323., 10., 0x7c693e);
+        self.text(s, g.progress.blade_name(), right, y + 108., 18., INK);
         self.text(
             s,
-            if g.quest == Quest::Carrying {
-                "Mira's herb parcel  × 1    ·    Iron sword    ·    Traveller's map"
-            } else {
-                "Iron sword    ·    Traveller's map    ·    A good pair of boots"
-            },
-            x,
-            y + 353.,
-            15.,
-            INK,
+            &format!("{} damage per strike", g.progress.blade_damage() as u32),
+            right,
+            y + 134.,
+            12.,
+            0x647057,
         );
-        self.text(s, "WILDERNESS", x, y + 400., 10., 0x7c693e);
+        self.text(s, g.progress.armor_name(), right, y + 171., 18., INK);
         self.text(
             s,
             &format!(
-                "Monsters defeated: {}  ·  Rest in peaceful villages to recover.",
-                g.combat.kills
+                "{}% damage reduction",
+                ((1. - g.progress.armor_multiplier()) * 100.).round() as u32
             ),
-            x,
-            y + 429.,
+            right,
+            y + 197.,
+            12.,
+            0x647057,
+        );
+        self.text(s, "VILLAGE REPUTATION", right, y + 252., 10., 0x7c693e);
+        for (i, name) in ["Briarglen", "Willowford"].into_iter().enumerate() {
+            self.text(
+                s,
+                &format!(
+                    "{name} · {} ({:+})",
+                    g.progress.reputation_name(i),
+                    g.progress.reputation[i]
+                ),
+                right,
+                y + 285. + i as f32 * 28.,
+                14.,
+                INK,
+            );
+        }
+        self.text(
+            s,
+            &format!("Monsters defeated: {}", g.combat.kills),
+            right,
+            y + 375.,
             14.,
             INK,
         );
+        self.text(
+            s,
+            if g.progress.secret_open {
+                "Emberwatch's secret found"
+            } else {
+                "A secret waits in Emberwatch"
+            },
+            right,
+            y + 404.,
+            12.,
+            0x647057,
+        );
     }
-    fn help(&mut self, s: &mut Scene, p: Vec2, size: Vec2) {
-        let x = p.x + 40.;
-        let y = p.y + 137.;
-        for (i, (key, action)) in [
-            ("W A S D  /  Arrow keys", "Walk through the world"),
-            ("Shift", "Run along the trails"),
-            ("Space / left click", "Strike with your sword; click to aim"),
-            (
-                "E  /  Enter",
-                "Speak to a nearby villager; continue dialogue",
+    fn menu_button(&mut self, s: &mut Scene, p: Vec2, key: &str, title: &str, detail: &str) {
+        self.panel(s, p, Vec2::new(880., 110.), INK);
+        self.rect(s, p + Vec2::new(20., 29.), Vec2::new(43., 43.), 0x344b3e);
+        self.center(s, key, p.x + 42., p.y + 58., 22., GOLD);
+        self.title(s, title, p.x + 85., p.y + 40., 23., PAPER);
+        self.text(s, detail, p.x + 85., p.y + 74., 14., MUTED);
+    }
+    fn forge(&mut self, s: &mut Scene, g: &Game, p: Vec2) {
+        self.text(
+            s,
+            &format!(
+                "Your purse: {} crowns     Iron shards: {}     Briarglen: {}",
+                g.progress.coins,
+                g.progress.materials,
+                g.progress.reputation_name(0)
             ),
-            ("M", "Unfold your map"),
-            ("J  /  Tab", "Read your journal and satchel"),
-            ("+  /  −  /  Mouse wheel", "Adjust the view"),
-            ("Escape", "Close a panel or pause"),
+            p.x + 40.,
+            p.y + 133.,
+            16.,
+            INK,
+        );
+        let blade = match g.progress.blade_cost() {
+            Some((c, m)) => {
+                format!("{c} crowns + {m} iron shards · permanently increases sword damage")
+            }
+            None => "Your blade is fully forged.".into(),
+        };
+        let armor = match g.progress.armor_cost() {
+            Some((c, m)) => {
+                format!("{c} crowns + {m} iron shards · reduces incoming damage by another 20%")
+            }
+            None => "You wear the finest armor from this forge.".into(),
+        };
+        self.menu_button(
+            s,
+            p + Vec2::new(40., 185.),
+            "1",
+            &format!("Improve {}", g.progress.blade_name()),
+            &blade,
+        );
+        self.menu_button(
+            s,
+            p + Vec2::new(40., 325.),
+            "2",
+            &format!("Improve {}", g.progress.armor_name()),
+            &armor,
+        );
+        self.text(
+            s,
+            "Trusted neighbors receive a 20% coin discount. Upgrades are equipped immediately.",
+            p.x + 40.,
+            p.y + 477.,
+            14.,
+            0x647057,
+        );
+        self.text(
+            s,
+            "Hunt creatures for supplies. Return the Emberheart to earn Alden’s unique blade.",
+            p.x + 40.,
+            p.y + 507.,
+            14.,
+            0x647057,
+        );
+        if g.toast_time > 0. {
+            self.paragraph(s, &g.toast, p + Vec2::new(40., 554.), 850., 14., 0x7c693e);
+        }
+    }
+    fn village(&mut self, s: &mut Scene, g: &Game, p: Vec2) {
+        let Some(v) = g.near_village() else {
+            return;
+        };
+        let name = ["Briarglen", "Willowford"][v];
+        self.text(
+            s,
+            &format!(
+                "{name} · {} ({:+})     Purse: {} crowns",
+                g.progress.reputation_name(v),
+                g.progress.reputation[v],
+                g.progress.coins
+            ),
+            p.x + 40.,
+            p.y + 133.,
+            16.,
+            INK,
+        );
+        let detail = if let Some(cost) = g.amends_cost(v) {
+            format!("{cost} crowns · ends retaliation and restores negative reputation to neutral")
+        } else {
+            "There is no debt to settle. Your neighbors welcome you.".into()
+        };
+        self.menu_button(s, p + Vec2::new(40., 185.), "1", "Make amends", &detail);
+        self.paragraph(s,"Hurting a resident calls the whole village to their defense. Leaving the area for a minute lets tempers cool, but people remember. Reparations settle your debt. Helping with errands earns trust, and trusted friends receive better prices at Alden’s forge.",p+Vec2::new(40.,350.),860.,17.,INK);
+        if g.toast_time > 0. {
+            self.paragraph(s, &g.toast, p + Vec2::new(40., 535.), 850., 15., 0x7c693e);
+        }
+    }
+    fn help(&mut self, s: &mut Scene, p: Vec2, _: Vec2) {
+        for (i, (key, action)) in [
+            ("WASD / Arrows · Shift", "Walk · Run using stamina"),
+            ("Space / left click", "Strike; click to aim your sword"),
+            (
+                "Q / right click",
+                "Dodge; aim with movement keys or the pointer",
+            ),
+            (
+                "E / Enter",
+                "Talk, inspect, collect relics, continue dialogue",
+            ),
+            (
+                "1 / 2 · R",
+                "Buy upgrades in the forge · Open village council",
+            ),
+            ("M · J / Tab", "Map · Journal, equipment, and reputation"),
+            ("+ / − / Mouse wheel", "Adjust the view"),
+            ("U · Escape", "Mute sound · Close panels or pause"),
         ]
-        .iter()
+        .into_iter()
         .enumerate()
         {
-            let yy = y + i as f32 * 40.;
-            self.text(s, key, x, yy, 14., 0x76643b);
-            self.text(s, action, x + 235., yy, 14., INK);
+            self.text(
+                s,
+                key,
+                p.x + 40.,
+                p.y + 132. + i as f32 * 39.,
+                14.,
+                0x76643b,
+            );
+            self.text(s, action, p.x + 285., p.y + 132. + i as f32 * 39., 14., INK);
         }
-        self.paragraph(s,"Monsters live far from the villages. Strike, then step away from their orange attack rings. Rest in a peaceful village to heal. Striking a resident turns their whole village hostile; leave the area for a minute to let tempers cool.",Vec2::new(x,y+337.),size.x-80.,14.,0x647057);
+        self.paragraph(s,"Striking, running, and dodging spend stamina; catch your breath to recover. Orange rings warn of attacks. Collect glowing drops for crowns and iron shards. Peaceful villages heal you. Defeat returns you home with your belongings. Q while paused saves and quits.",p+Vec2::new(40.,470.),880.,14.,0x647057);
     }
     fn dialogue(&mut self, s: &mut Scene, g: &Game, size: Vec2) {
         let Some(d) = &g.dialogue else {
             return;
         };
         let w = (size.x - 100.).min(900.);
-        let p = Vec2::new((size.x - w) * 0.5, size.y - 285.);
-        self.panel(s, p, Vec2::new(w, 215.), PAPER);
-        self.rect(s, p + Vec2::new(12., 12.), Vec2::new(116., 191.), 0xd2d3af);
+        let p = Vec2::new((size.x - w) * 0.5, size.y - 370.);
+        self.panel(s, p, Vec2::new(w, 300.), PAPER);
+        self.rect(s, p + Vec2::new(12., 12.), Vec2::new(116., 276.), 0xd2d3af);
         if let Some(npc) = g.world.npcs.iter().find(|n| n.name == d.speaker) {
             self.sprite(
                 s,
                 &self.people[(npc.variant as usize % 9) * 12],
-                p + Vec2::new(71., 161.),
+                p + Vec2::new(71., 201.),
                 4.,
                 true,
             );
@@ -1042,7 +1365,7 @@ impl Renderer {
         self.label(
             s,
             "E / ENTER  Continue",
-            p + Vec2::new(w - 26., 192.),
+            p + Vec2::new(w - 26., 280.),
             11.,
             0x76643b,
             false,
@@ -1072,6 +1395,7 @@ fn tile_index(tile: Tile) -> usize {
         Tile::Sand => 4,
         Tile::Bridge => 5,
         Tile::Farmland => 6,
+        Tile::Stone => 7,
     }
 }
 fn prop_index(kind: PropKind) -> usize {
@@ -1084,6 +1408,10 @@ fn prop_index(kind: PropKind) -> usize {
         PropKind::Rock => 5,
         PropKind::Flowers => 6,
         PropKind::Fence => 7,
+        PropKind::Wall => 8,
+        PropKind::Torch => 9,
+        PropKind::Anvil => 10,
+        PropKind::Gate => 11,
     }
 }
 fn map_color(tile: Tile) -> u32 {
@@ -1095,6 +1423,7 @@ fn map_color(tile: Tile) -> u32 {
         Tile::Sand => 0xbfc28c,
         Tile::Bridge => 0xb8965c,
         Tile::Farmland => 0xa18b54,
+        Tile::Stone => 0x727f76,
     }
 }
 fn scene_ring(l: &Library, s: &mut Scene, p: Vec2, r: Vec2, c: Vec4) {
@@ -1122,4 +1451,17 @@ fn world_origin(game: &Game) -> Vec2 {
 }
 pub fn world_at(screen: Vec2, game: &Game) -> Vec2 {
     (screen - world_origin(game)) / game.zoom
+}
+
+pub fn menu_hit(pos: Vec2) -> Option<u8> {
+    if !(200. ..=1080.).contains(&pos.x) {
+        return None;
+    }
+    if (275. ..=385.).contains(&pos.y) {
+        Some(1)
+    } else if (415. ..=525.).contains(&pos.y) {
+        Some(2)
+    } else {
+        None
+    }
 }

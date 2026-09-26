@@ -2,11 +2,13 @@
 
 use crate::{
     combat::MAX_HEALTH,
+    progress::{ForgeQuest, Progress},
     world::{HEIGHT, Quest, TILE, WIDTH},
 };
 use wgame::glam::Vec2;
 
-const VERSION: &str = "moss-and-mere-v2";
+const VERSION: &str = "moss-and-mere-v3";
+const COMBAT_VERSION: &str = "moss-and-mere-v2";
 const LEGACY_VERSION: &str = "moss-and-mere-v1";
 const MAX_SAVE_BYTES: usize = 512;
 
@@ -19,6 +21,7 @@ pub struct Save {
     pub kills: u32,
     /// Bit 0 is Briarglen; bit 1 is Willowford.
     pub hostile: u8,
+    pub progress: Progress,
 }
 
 impl Save {
@@ -46,6 +49,20 @@ impl Save {
             && self.health > 0.0
             && self.health <= MAX_HEALTH
             && self.hostile & !0b11 == 0
+            && self.progress.blade <= 3
+            && self.progress.armor <= 2
+            && self
+                .progress
+                .reputation
+                .iter()
+                .all(|r| (-100..=100).contains(r))
+            && (!self.progress.chest_taken || self.progress.secret_open)
+            && (!self.progress.relic_taken || self.progress.guardian_defeated)
+            && (!matches!(
+                self.progress.forge,
+                ForgeQuest::Recovered | ForgeQuest::Complete
+            ) || self.progress.relic_taken)
+            && (self.progress.forge != ForgeQuest::Complete || self.progress.blade == 3)
     }
 
     fn encode(&self) -> Result<String, String> {
@@ -57,15 +74,32 @@ impl Save {
             Quest::Carrying => "carrying",
             Quest::Delivered => "delivered",
         };
+        let p = &self.progress;
+        let forge = match p.forge {
+            ForgeQuest::NotStarted => 0,
+            ForgeQuest::Seeking => 1,
+            ForgeQuest::Recovered => 2,
+            ForgeQuest::Complete => 3,
+        };
+        let dungeon = u8::from(p.secret_open)
+            | (u8::from(p.chest_taken) << 1)
+            | (u8::from(p.relic_taken) << 2)
+            | (u8::from(p.guardian_defeated) << 3);
         Ok(format!(
-            "{VERSION}\nposition {} {}\nquest {quest}\nvisited {}\nelapsed {}\nhealth {}\nkills {}\nhostile {}\n",
+            "{VERSION}\nposition {} {}\nquest {quest}\nvisited {}\nelapsed {}\nhealth {}\nkills {}\nhostile {}\ninventory {} {}\nequipment {} {}\nforge {forge}\nreputation {} {}\ndungeon {dungeon}\n",
             self.pos.x,
             self.pos.y,
             self.visited,
             self.elapsed,
             self.health,
             self.kills,
-            self.hostile
+            self.hostile,
+            p.coins,
+            p.materials,
+            p.blade,
+            p.armor,
+            p.reputation[0],
+            p.reputation[1]
         ))
     }
 
@@ -75,7 +109,9 @@ impl Save {
         }
         let mut words = text.split_whitespace();
         let version = words.next()?;
-        if !matches!(version, VERSION | LEGACY_VERSION) || words.next()? != "position" {
+        if !matches!(version, VERSION | COMBAT_VERSION | LEGACY_VERSION)
+            || words.next()? != "position"
+        {
             return None;
         }
         let pos = Vec2::new(words.next()?.parse().ok()?, words.next()?.parse().ok()?);
@@ -96,7 +132,7 @@ impl Save {
             return None;
         }
         let elapsed = words.next()?.parse().ok()?;
-        let (health, kills, hostile) = if version == VERSION {
+        let (health, kills, hostile) = if version != LEGACY_VERSION {
             if words.next()? != "health" {
                 return None;
             }
@@ -113,6 +149,50 @@ impl Save {
         } else {
             (MAX_HEALTH, 0, 0)
         };
+        let mut progress = Progress::default();
+        if version == VERSION {
+            if words.next()? != "inventory" {
+                return None;
+            }
+            progress.coins = words.next()?.parse().ok()?;
+            progress.materials = words.next()?.parse().ok()?;
+            if words.next()? != "equipment" {
+                return None;
+            }
+            progress.blade = words.next()?.parse().ok()?;
+            progress.armor = words.next()?.parse().ok()?;
+            if words.next()? != "forge" {
+                return None;
+            }
+            progress.forge = match words.next()? {
+                "0" => ForgeQuest::NotStarted,
+                "1" => ForgeQuest::Seeking,
+                "2" => ForgeQuest::Recovered,
+                "3" => ForgeQuest::Complete,
+                _ => return None,
+            };
+            if words.next()? != "reputation" {
+                return None;
+            }
+            progress.reputation = [words.next()?.parse().ok()?, words.next()?.parse().ok()?];
+            if words.next()? != "dungeon" {
+                return None;
+            }
+            let flags: u8 = words.next()?.parse().ok()?;
+            if flags > 15 {
+                return None;
+            }
+            progress.secret_open = flags & 1 != 0;
+            progress.chest_taken = flags & 2 != 0;
+            progress.relic_taken = flags & 4 != 0;
+            progress.guardian_defeated = flags & 8 != 0;
+        } else {
+            for i in 0..2 {
+                if hostile & (1 << i) != 0 {
+                    progress.reputation[i] = -15;
+                }
+            }
+        }
         let save = Self {
             pos,
             quest,
@@ -121,6 +201,7 @@ impl Save {
             health,
             kills,
             hostile,
+            progress,
         };
         (words.next().is_none() && save.valid()).then_some(save)
     }
@@ -402,6 +483,18 @@ mod tests {
             health: 72.5,
             kills: 19,
             hostile: 0b01,
+            progress: Progress {
+                coins: 54,
+                materials: 7,
+                blade: 1,
+                armor: 2,
+                forge: ForgeQuest::Recovered,
+                reputation: [-20, 35],
+                secret_open: true,
+                chest_taken: true,
+                relic_taken: true,
+                guardian_defeated: true,
+            },
         }
     }
 
@@ -436,11 +529,31 @@ mod tests {
     }
 
     #[test]
+    fn combat_saves_migrate_inventory_without_losing_progress() {
+        let old = "moss-and-mere-v2\nposition 680 1016\nquest delivered\nvisited 3\nelapsed 240\nhealth 80\nkills 7\nhostile 2\n";
+        let save = Save::parse(old).unwrap();
+        assert_eq!(save.kills, 7);
+        assert_eq!(save.progress.coins, 0);
+        assert_eq!(save.progress.reputation, [0, -15]);
+        assert_eq!(save.progress.forge, ForgeQuest::NotStarted);
+        assert_eq!(Save::parse(&save.encode().unwrap()).unwrap().hostile, 2);
+    }
+
+    #[test]
     fn rejects_malformed_and_unknown_save_formats() {
         let valid = example(Quest::Carrying).encode().unwrap();
         for invalid in [
             String::new(),
-            valid.replace(VERSION, "moss-and-mere-v3"),
+            valid.replace(VERSION, "moss-and-mere-v99"),
+            valid.replace("inventory 54", "inventory -1"),
+            valid.replace("equipment 1 2", "equipment 4 2"),
+            valid.replace("equipment 1 2", "equipment 1 3"),
+            valid.replace("forge 2", "forge 9"),
+            valid.replace("forge 2", "forge 3"),
+            valid.replace("dungeon 15", "dungeon 11"),
+            valid.replace("reputation -20 35", "reputation -101 35"),
+            valid.replace("dungeon 15", "dungeon 16"),
+            valid.replace("dungeon 15", "dungeon 4"),
             valid.replace("position", "location"),
             valid.replace("carrying", "invented"),
             valid.replace("visited 3", "visited 256"),
