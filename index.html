@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#182b26" />
+  <title>Moss &amp; Mere — The Green March</title>
+  <meta name="description" content="Explore a living fantasy world, meet villagers, battle woodland creatures, and uncover the secrets of Emberwatch." />
+  <meta property="og:title" content="Moss &amp; Mere — The Green March" />
+  <meta property="og:description" content="An open-world 2D fantasy RPG built with wgame. Play in your browser." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://agerasev.github.io/moss-and-mere/" />
+  <meta property="og:image" content="https://agerasev.github.io/moss-and-mere/preview.png" />
+  <meta property="og:image:width" content="1280" />
+  <meta property="og:image:height" content="800" />
+  <meta name="twitter:card" content="summary_large_image" />
+  
+<script type="module">
+import init, * as bindings from './moss-and-mere-c47874b7d6467566.js';
+const wasm = await init({ module_or_path: './moss-and-mere-c47874b7d6467566_bg.wasm' });
+
+
+window.wasmBindings = bindings;
+
+
+dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
+
+</script>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #182b26; }
+    body { display: grid; place-items: center; }
+    canvas { display: block; width: min(100vw, 160vh) !important; height: min(100vh, 62.5vw) !important; outline: none; }
+  </style>
+<link rel="modulepreload" href="./moss-and-mere-c47874b7d6467566.js" crossorigin="anonymous" integrity="sha384-IJ3wET7krnltdjo/l+zkYlUiA5gwx02cBf84ZBDk0RZowMQOTqVroo8UfRB05m+f"><link rel="preload" href="./moss-and-mere-c47874b7d6467566_bg.wasm" crossorigin="anonymous" integrity="sha384-OaUeR9cWXRa6jhBulkzRJXv+BTPAcrgSbU82kj2/eMYCCBnjSM68Xd9D1e6DK4Pm" as="fetch" type="application/wasm"></head>
+<body>
+  <canvas id="canvas" tabindex="0" aria-label="Moss and Mere game. Move with WASD or arrow keys; press H for help."></canvas>
+  <noscript>This game needs JavaScript and WebGL2 enabled.</noscript>
+  <script>
+    const canvas = document.getElementById('canvas');
+    canvas.addEventListener('contextmenu', event => event.preventDefault());
+    canvas.addEventListener('pointerdown', () => canvas.focus());
+    canvas.focus();
+  </script>
+</body>
+</html>

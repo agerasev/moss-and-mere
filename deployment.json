@@ -1,0 +1,39 @@
+{
+  "source_commit": "a9f89d9a5808916f278880007448c3bc20e69b33",
+  "built_at": "2026-09-26T06:06:04.894159+00:00",
+  "build_command": "trunk build --release --locked --no-default-features --features web --public-url ./",
+  "files": {
+    ".nojekyll": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "FONT-LICENSE.txt": {
+      "bytes": 3859,
+      "sha256": "63d3ba759d12804c5b31a9d5940d855c1820d1f5999e6b0872eb1c7ff045fbc9"
+    },
+    "LICENSE": {
+      "bytes": 1081,
+      "sha256": "636461dbe3d3330f9a2532f2136bbe16b0bd47c54590b50c93aa538cb2c6e256"
+    },
+    "README.md": {
+      "bytes": 822,
+      "sha256": "c5985c7ae3a33e6f45316cbe1cb045087127696b49d0af7ade6c7e81acfdbd7c"
+    },
+    "index.html": {
+      "bytes": 2463,
+      "sha256": "6ee4f728aa1f4d120769a2130914482dedfa770101a6b43c2b8ff80fde60c00c"
+    },
+    "moss-and-mere-c47874b7d6467566.js": {
+      "bytes": 99781,
+      "sha256": "63cecaf264dd14b8b2b09c45d48e327fd0fbc5d49247cb3e51ff8a67a0b99623"
+    },
+    "moss-and-mere-c47874b7d6467566_bg.wasm": {
+      "bytes": 7579569,
+      "sha256": "b55e2e0a3ac1ae37c1e9a2af56c4ab3c65cda487ef28a657da40758dac3e7e87"
+    },
+    "preview.png": {
+      "bytes": 268861,
+      "sha256": "f0a0a74e18cfc5d2549ced8dd335a27ecada4f397541f480509a5c7247a26bd7"
+    }
+  }
+}
