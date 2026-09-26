@@ -144,6 +144,26 @@ These preview commands start a fresh world, render twelve frames, and exit
 without saving. They require a graphical display. For a static browser build,
 use `trunk build --no-default-features --features web`.
 
+## GitHub Pages
+
+The `master` branch contains source only. Compiled HTML, JavaScript, WebAssembly,
+and the example screenshot are committed exclusively to `gh-pages`.
+
+- Game: https://agerasev.github.io/moss-and-mere/
+- Example screenshot: https://agerasev.github.io/moss-and-mere/preview.png
+
+Build the web release with relative asset URLs so it works under the repository path:
+
+```sh
+trunk build --release --locked --no-default-features --features web --public-url ./
+```
+
+Publish the generated `dist/` contents at the root of `gh-pages`, along with
+`.nojekyll`, `LICENSE`, `assets/FONT-LICENSE.txt` as `FONT-LICENSE.txt`, and an
+example screenshot named `preview.png`. Keep generated files out of `master`.
+In repository **Settings → Pages**, select **Deploy from a branch**, **gh-pages**,
+and **/(root)**.
+
 ## Implementation
 
 - `src/world.rs`: deterministic terrain, collision, villagers, and conversations.
