@@ -1,0 +1,25 @@
+[package]
+name = "moss-and-mere"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "A quiet fantasy world to wander, built with wgame"
+
+[features]
+default = ["desktop"]
+desktop = ["wgame/desktop"]
+web = ["wgame/web", "dep:web-sys"]
+
+[dependencies]
+wgame = { path = "../wgame/wgame", default-features = false, features = ["shapes", "image", "typography"] }
+web-sys = { version = "0.3.105", optional = true, features = ["Window", "Storage"] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+lto = "thin"
+
