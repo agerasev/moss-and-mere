@@ -24,10 +24,9 @@ cd ~/develop/my/moss-and-mere
 To build from source after making changes:
 
 Requires a current Rust toolchain, a desktop graphics driver, SDL2 development
-libraries for native sound, and the neighboring `../wgame` checkout. This project
-references `../wgame/wgame` in `Cargo.toml`. On Debian or Ubuntu, install the audio
-build dependency with `sudo apt install libsdl2-dev`. The local Linux executable
-uses the system SDL2 runtime.
+libraries for native sound. Cargo downloads wgame 0.1.0 from crates.io. On Debian
+or Ubuntu, install the audio build dependency with `sudo apt install libsdl2-dev`.
+The local Linux executable uses the system SDL2 runtime.
 
 ```sh
 cd ~/develop/my/moss-and-mere
@@ -115,6 +114,25 @@ The journey now has changing daylight and rain, with footsteps, sword impacts,
 birds, river ambience, and weather sounds. Audio is generated locally. Press U
 to mute it.
 
+## Local library development
+
+To use a neighboring `../wgame` checkout, pass the provided Cargo override:
+
+```sh
+cargo run --config .cargo/local-libs.toml
+```
+
+For repeated local builds, including Trunk, copy it to the ignored Cargo config:
+
+```sh
+cp .cargo/local-libs.toml .cargo/config.toml
+```
+
+The override changes `Cargo.lock` to local package sources. To return to the
+published versions, remove `.cargo/config.toml` if you created it and restore
+the committed lockfile before building with `--locked`. Keep local lockfile
+changes out of release commits.
+
 ## Browser build
 
 The same game supports WebGL2 and saves to browser local storage. Install the
@@ -152,14 +170,14 @@ and the example screenshot are committed exclusively to `gh-pages`.
 - Game: https://agerasev.github.io/moss-and-mere/
 - Example screenshot: https://agerasev.github.io/moss-and-mere/preview.png
 
-Build the web release with relative asset URLs so it works under the repository path:
+Build the web release for the repository path:
 
 ```sh
-trunk build --release --locked --no-default-features --features web --public-url ./
+./scripts/build-web.sh /moss-and-mere/
 ```
 
-Publish the generated `dist/` contents at the root of `gh-pages`, along with
-`.nojekyll`, `LICENSE`, `assets/FONT-LICENSE.txt` as `FONT-LICENSE.txt`, and an
+The script includes `.nojekyll`, the project license, and the font license.
+Publish the generated `dist/` contents at the root of `gh-pages`, preserving an
 example screenshot named `preview.png`. Keep generated files out of `master`.
 In repository **Settings → Pages**, select **Deploy from a branch**, **gh-pages**,
 and **/(root)**.

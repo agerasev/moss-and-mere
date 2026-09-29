@@ -3,3 +3,5 @@
 /bin/
 /screenshots/
 
+# Optional local Cargo overrides.
+/.cargo/config.toml
