@@ -1,7 +1,12 @@
 {
-  "source_commit": "a9f89d9a5808916f278880007448c3bc20e69b33",
-  "built_at": "2026-09-26T06:06:04.894159+00:00",
-  "build_command": "trunk build --release --locked --no-default-features --features web --public-url ./",
+  "source_commit": "dda4e664c043e97be463b4f7b610deb27d52be2c",
+  "source_branch": "master",
+  "public_url": "/moss-and-mere/",
+  "library_versions": {
+    "wgame": "0.1.0"
+  },
+  "built_at": "2026-09-29T09:20:23.327694+00:00",
+  "build_command": "./scripts/build-web.sh /moss-and-mere/",
   "files": {
     ".nojekyll": {
       "bytes": 0,
@@ -16,20 +21,24 @@
       "sha256": "636461dbe3d3330f9a2532f2136bbe16b0bd47c54590b50c93aa538cb2c6e256"
     },
     "README.md": {
-      "bytes": 822,
-      "sha256": "c5985c7ae3a33e6f45316cbe1cb045087127696b49d0af7ade6c7e81acfdbd7c"
+      "bytes": 777,
+      "sha256": "2f739ec920a0ac6e458058666cac6050f564ce46bbb161d609f802078870663c"
+    },
+    "build.json": {
+      "bytes": 291,
+      "sha256": "1a8bc863ed81066e306c45ff307f9515466ce91ef474ef6dcd23d165cf4b6b12"
     },
     "index.html": {
-      "bytes": 2463,
-      "sha256": "6ee4f728aa1f4d120769a2130914482dedfa770101a6b43c2b8ff80fde60c00c"
+      "bytes": 2515,
+      "sha256": "9fa7b9aeee60d00f76ec14a9092cf0c62a7af4e704e51a1066823e21169b3640"
     },
-    "moss-and-mere-c47874b7d6467566.js": {
+    "moss-and-mere-31f3243c90fb1301.js": {
       "bytes": 99781,
-      "sha256": "63cecaf264dd14b8b2b09c45d48e327fd0fbc5d49247cb3e51ff8a67a0b99623"
+      "sha256": "a33164cbba817a8bfad562c70ffaad3ba6655f6013e84409de9f85af6f83cd55"
     },
-    "moss-and-mere-c47874b7d6467566_bg.wasm": {
-      "bytes": 7579569,
-      "sha256": "b55e2e0a3ac1ae37c1e9a2af56c4ab3c65cda487ef28a657da40758dac3e7e87"
+    "moss-and-mere-31f3243c90fb1301_bg.wasm": {
+      "bytes": 7579228,
+      "sha256": "40edf5cc71880758e0e0c852231989833a8620ba6969ff3183e3b0b076d35efc"
     },
     "preview.png": {
       "bytes": 268861,
